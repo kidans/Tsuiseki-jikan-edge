@@ -51,8 +51,12 @@ export function configPatches({ databaseId, dbName, contact, workerName }) {
     [/("routes"\s*:\s*)\[[^\]]*\]/, '$1[]'],
   ];
   // The user agent is what MyAnimeList sees. Left unchanged, a fork's traffic is attributed to the
-  // upstream author's domain.
-  if (contact) patches.push([/("MAL_USER_AGENT"\s*:\s*")[^"]*(")/, `$1jikan-edge/0.1 (+${contact})$2`]);
+  // upstream author's domain. If a custom worker name is supplied, use it as the service identity;
+  // otherwise retain the upstream-compatible jikan-edge prefix.
+  if (contact) {
+    const userAgentName = workerName ?? 'jikan-edge';
+    patches.push([/("MAL_USER_AGENT"\s*:\s*")[^"]*(")/, `$1${userAgentName}/0.1 (+${contact})$2`]);
+  }
   if (workerName) patches.push([/^(\s*"name"\s*:\s*")[^"]*(")/m, `$1${workerName}$2`]);
   return patches;
 }
