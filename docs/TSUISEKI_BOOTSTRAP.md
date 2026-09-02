@@ -49,6 +49,8 @@ npm run deploy
 
 Do not deploy if `wrangler.jsonc` still contains the all-zero D1 placeholder.
 
+After setup, inspect the `wrangler.jsonc` diff and commit the resolved D1 binding back to the bootstrap PR so future deployments are reproducible. The D1 database id is configuration, not a credential. Never commit Cloudflare API tokens, OAuth/session material, or other authentication secrets.
+
 ## First live acceptance
 
 After deployment, record the Worker URL and verify:
