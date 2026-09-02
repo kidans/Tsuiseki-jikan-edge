@@ -12,7 +12,7 @@
   "assets": { "directory": "./site" },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "vars": {
-    "MAL_USER_AGENT": "Tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)",
+    "MAL_USER_AGENT": "tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)",
     "PROFILE_TTL_SECONDS": "21600",
     "LIST_TTL_SECONDS": "7200",
     "ANIME_TTL_SECONDS": "21600",
@@ -27,7 +27,7 @@
     {
       "binding": "DB",
       "database_name": "tsuiseki-jikan-edge",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "524d177d-63ab-4af1-9162-9b10788bfca8"
     }
   ],
   // Namespace ids are scoped to the Cloudflare account, so these counters do
