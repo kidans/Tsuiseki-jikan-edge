@@ -6,7 +6,8 @@ import { applyPatches, configPatches, CONFIG_PATH, databaseIdFrom, parseArgs, pa
 // pattern stops matching, this fails here rather than in a self-hoster's first command.
 const CONFIG = readFileSync(CONFIG_PATH, 'utf8');
 const ID = '11111111-2222-3333-4444-555555555555';
-const patched = (options) => applyPatches(CONFIG, configPatches({ databaseId: ID, dbName: 'jikan-edge', ...options }));
+const DB_NAME = 'tsuiseki-jikan-edge';
+const patched = (options) => applyPatches(CONFIG, configPatches({ databaseId: ID, dbName: DB_NAME, ...options }));
 
 describe('setup argument parsing', () => {
   it('reads flags with and without values', () => {
@@ -20,20 +21,20 @@ describe('setup argument parsing', () => {
 
 describe('reading the database id out of wrangler', () => {
   it('finds the requested database by name', () => {
-    const output = JSON.stringify([{ uuid: 'other', name: 'something-else' }, { uuid: ID, name: 'jikan-edge' }]);
-    expect(databaseIdFrom(output, 'jikan-edge')).toBe(ID);
+    const output = JSON.stringify([{ uuid: 'other', name: 'something-else' }, { uuid: ID, name: DB_NAME }]);
+    expect(databaseIdFrom(output, DB_NAME)).toBe(ID);
   });
 
   it('ignores a banner printed before the JSON', () => {
-    expect(parseJsonOutput(` ⛅️ wrangler 4.112.0\n─────────\n[{"uuid":"${ID}","name":"jikan-edge"}]`)).toEqual([{ uuid: ID, name: 'jikan-edge' }]);
+    expect(parseJsonOutput(` ⛅️ wrangler 4.112.0\n─────────\n[{"uuid":"${ID}","name":"${DB_NAME}"}]`)).toEqual([{ uuid: ID, name: DB_NAME }]);
   });
 
   it('reports nothing rather than guessing when the database is absent', () => {
-    expect(databaseIdFrom(JSON.stringify([{ uuid: ID, name: 'other' }]), 'jikan-edge')).toBeNull();
+    expect(databaseIdFrom(JSON.stringify([{ uuid: ID, name: 'other' }]), DB_NAME)).toBeNull();
   });
 
   it('survives output that is not JSON at all', () => {
-    expect(databaseIdFrom('Authentication error [code: 10000]', 'jikan-edge')).toBeNull();
+    expect(databaseIdFrom('Authentication error [code: 10000]', DB_NAME)).toBeNull();
   });
 });
 
@@ -45,17 +46,15 @@ describe('patching wrangler.jsonc', () => {
   it('leaves the rest of the config, including its comments, intact', () => {
     const result = patched({});
     expect(result).toContain('"binding": "DB"');
-    expect(result).toContain('// Forking this?');
+    expect(result).toContain('// Fail-safe placeholder.');
     expect(result.split('\n').length).toBe(CONFIG.split('\n').length);
   });
 
-  // A fork inheriting the maintainer's custom domain fails `wrangler deploy` outright: the zone is
-  // not in its account. Emptying the list leaves the fork on its own workers.dev URL.
-  it('drops the custom domain route, and stays idempotent once it is empty', () => {
+  it('keeps custom domain routes absent, and stays idempotent once empty', () => {
     const result = patched({});
     expect(result).toContain('"routes": []');
     expect(result).not.toContain('custom_domain');
-    expect(applyPatches(result, configPatches({ databaseId: ID, dbName: 'jikan-edge' }))).toBe(result);
+    expect(applyPatches(result, configPatches({ databaseId: ID, dbName: DB_NAME }))).toBe(result);
   });
 
   // The rate limiters carry a `"name"` too — renaming one of those would silently split a fork's
@@ -67,15 +66,23 @@ describe('patching wrangler.jsonc', () => {
     expect(result).toContain('"name": "API_BURST_LIMIT"');
   });
 
-  it('points the MyAnimeList user agent at the fork', () => {
+  it('uses the requested Worker identity in the MyAnimeList user agent', () => {
+    const result = patched({
+      contact: 'https://github.com/kidans/Tsuiseki-jikan-edge',
+      workerName: 'tsuiseki-jikan-edge',
+    });
+    expect(result).toContain('"MAL_USER_AGENT": "tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)"');
+  });
+
+  it('retains upstream-compatible user-agent naming when no worker name is supplied', () => {
     expect(patched({ contact: 'https://mine.workers.dev' })).toContain('"MAL_USER_AGENT": "jikan-edge/0.1 (+https://mine.workers.dev)"');
   });
 
-  it('leaves the user agent alone when no contact is given', () => {
-    expect(patched({})).toContain('"MAL_USER_AGENT": "jikan-edge/0.1 (+https://jikan.lucashdo.com)"');
+  it('leaves the Tsuiseki user agent alone when no contact is given', () => {
+    expect(patched({})).toContain('"MAL_USER_AGENT": "Tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)"');
   });
 
   it('refuses to write a half-patched config when a pattern stops matching', () => {
-    expect(() => applyPatches('{ "no": "match" }', configPatches({ databaseId: ID, dbName: 'jikan-edge' }))).toThrow(/edit it by hand/);
+    expect(() => applyPatches('{ "no": "match" }', configPatches({ databaseId: ID, dbName: DB_NAME }))).toThrow(/edit it by hand/);
   });
 });
