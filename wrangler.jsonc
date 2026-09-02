@@ -1,42 +1,37 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "jikan-edge",
+  "name": "tsuiseki-jikan-edge",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-19",
-  // `workers_dev` stays true on purpose: the *.workers.dev hostname keeps serving alongside the
-  // custom domain, so consumers that integrated before the migration are never broken.
   "workers_dev": true,
-  // Forking this? `npm run setup` empties this list — `wrangler deploy` fails outright on a custom
-  // domain whose zone is not in your own account.
-  "routes": [{ "pattern": "jikan.lucashdo.com", "custom_domain": true }],
-  // Static landing site at "/" — asset-first routing keeps /v1/* and /health on the Worker.
+  // Tsuiseki fork: never inherit the upstream author's custom domain.
+  // Codex/`npm run setup:tsuiseki` may add a custom domain later if desired.
+  "routes": [],
+  // Keep upstream static assets available during bootstrap. Tsuiseki only depends
+  // on /health and exact-id API routes; the landing page is not part of the contract.
   "assets": { "directory": "./site" },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "vars": {
-    "MAL_USER_AGENT": "jikan-edge/0.1 (+https://jikan.lucashdo.com)",
+    "MAL_USER_AGENT": "Tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)",
     "PROFILE_TTL_SECONDS": "21600",
     "LIST_TTL_SECONDS": "7200",
     "ANIME_TTL_SECONDS": "21600",
     "CATALOG_TTL_SECONDS": "21600",
     "SOURCE_TIMEOUT_MS": "8000",
-    // 5 MiB. At 2 MiB the character/staff pages of long-running series were refused outright
-    // (Naruto 2.3 MB, Bleach 3.0 MB, Pokémon 3.5 MB, Naruto Shippuden 4.2 MB). Measured cost of
-    // allowing them: ~8.8 ms/MB to parse and ~2 s to fetch, both far inside their limits. The two
-    // titles still above this line (One Piece 9.9 MB, Detective Conan 7.3 MB) are held back by
-    // SOURCE_TIMEOUT_MS, not by this number — see docs/routes.md.
-    "MAX_UPSTREAM_BYTES": "5242880"
-    ,"WORKER_VERSION": "jikan-edge-2026-07-19"
+    "MAX_UPSTREAM_BYTES": "5242880",
+    "WORKER_VERSION": "tsuiseki-jikan-edge-bootstrap-2026-09-02"
   },
-  // Forking this? Run `npm run setup` — it creates your own D1 and rewrites the id below.
+  // Fail-safe placeholder. `npm run setup:tsuiseki` creates/reuses the real D1
+  // database and replaces this id before any Production deployment.
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "jikan-edge",
-      "database_id": "71f8a596-7855-47a5-906c-9a1cf46e12ee"
+      "database_name": "tsuiseki-jikan-edge",
+      "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ],
-  // namespace_id is an arbitrary integer scoped to your own Cloudflare account, so a fork can keep
-  // these values as they are: counters never cross accounts.
+  // Namespace ids are scoped to the Cloudflare account, so these counters do
+  // not share state with upstream even when the numeric ids are the same.
   "ratelimits": [
     { "name": "API_RATE_LIMIT", "namespace_id": "18973", "simple": { "limit": 60, "period": 60 } },
     { "name": "API_BURST_LIMIT", "namespace_id": "18974", "simple": { "limit": 30, "period": 10 } }
