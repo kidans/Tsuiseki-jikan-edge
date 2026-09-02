@@ -27,7 +27,7 @@
     {
       "binding": "DB",
       "database_name": "tsuiseki-jikan-edge",
-      "database_id": "524d177d-63ab-4af1-9162-9b10788bfca8"
+      "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ],
   // Namespace ids are scoped to the Cloudflare account, so these counters do
