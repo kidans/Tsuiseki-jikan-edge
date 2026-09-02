@@ -12,7 +12,7 @@
   "assets": { "directory": "./site" },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "vars": {
-    "MAL_USER_AGENT": "tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)",
+    "MAL_USER_AGENT": "Tsuiseki-jikan-edge/0.1 (+https://github.com/kidans/Tsuiseki-jikan-edge)",
     "PROFILE_TTL_SECONDS": "21600",
     "LIST_TTL_SECONDS": "7200",
     "ANIME_TTL_SECONDS": "21600",
