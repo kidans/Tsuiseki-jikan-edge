@@ -1,11 +1,12 @@
 {
-  "name": "jikan-edge",
+  "name": "tsuiseki-jikan-edge",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-tsuiseki.1",
   "packageManager": "pnpm@11.24.0",
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "setup:tsuiseki": "node scripts/setup.mjs --db-name=tsuiseki-jikan-edge --worker-name=tsuiseki-jikan-edge --contact=https://github.com/kidans/Tsuiseki-jikan-edge",
     "og": "node scripts/render-og.mjs",
     "dev": "wrangler dev --remote",
     "dev:local": "wrangler dev --local",
@@ -15,8 +16,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "wrangler deploy --dry-run",
-    "db:migrate:local": "wrangler d1 migrations apply jikan-edge --local",
-    "db:migrate:remote": "wrangler d1 migrations apply jikan-edge --remote",
+    "db:migrate:local": "wrangler d1 migrations apply tsuiseki-jikan-edge --local",
+    "db:migrate:remote": "wrangler d1 migrations apply tsuiseki-jikan-edge --remote",
     "benchmark": "vitest run tests/benchmarks"
   },
   "dependencies": {
