@@ -41,7 +41,10 @@ const mangaDetailSchema = z.object({
 
 export function parseMangaDetail(html: string, malId: number, fetchedAt = new Date().toISOString()): MangaDetail {
   const head = html.slice(0, 90_000);
-  const title = capture(head, /<span class="h1-title">\s*<span itemprop="name">([^<]+)<\/span>/i);
+  // MAL has two observed title layouts. Most pages close itemprop="name" immediately after the
+  // primary title; some pages put an English display title inside the same span after a <br>.
+  // Capture only the primary text in either case instead of requiring the closing span directly.
+  const title = capture(head, /<span class="h1-title">\s*<span itemprop="name">([^<]+)(?:<br\s*\/?>|<\/span>)/i);
   const imageUrl = taggedImage(head, COVER_IMAGE);
   const status = labelValue(head, 'Status');
   const detail: MangaDetail = {
