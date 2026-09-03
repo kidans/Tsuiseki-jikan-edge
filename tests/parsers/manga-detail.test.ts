@@ -28,6 +28,17 @@ describe('manga detail parser', () => {
     expect(detail.externalLinks).toEqual([{ name: 'Official Site', url: 'https://www.dark-horse.com/' }]);
   });
 
+  it('keeps the primary title when MAL nests an English title after a line break', () => {
+    const alternateTitleHtml = html.replace(
+      '<span class="h1-title"><span itemprop="name">Berserk</span></span>',
+      '<span class="h1-title"><span itemprop="name">Oni no Hanayome<br><span class="title-english">The Ogre&#039;s Bride</span></span></span>',
+    );
+    expect(alternateTitleHtml).not.toBe(html);
+
+    const detail = parseMangaDetail(alternateTitleHtml, 182698, '2026-09-03T00:00:00.000Z');
+    expect(detail.title).toBe('Oni no Hanayome');
+  });
+
   describe('against markup copied from the live page', () => {
     const detail = parseMangaDetail(realHtml, 2, '2026-07-30T00:00:00.000Z');
 
