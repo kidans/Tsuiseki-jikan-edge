@@ -1,0 +1,50 @@
+name: TEMP Production parser probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.head_ref == 'ops/probe-production-parser-fix-20260903'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Production Worker
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base = 'https://tsuiseki-jikan-edge.keithpanlaqui.workers.dev';
+          const targets = [
+            ['/health', 200, 'health'],
+            ['/v1/manga/182698', 200, 'oni-no-hanayome'],
+            ['/v1/manga/1706', 200, 'steel-ball-run'],
+            ['/v1/manga/144180', 200, 'gachiakuta-control'],
+            ['/v1/manga/2', 200, 'berserk-control'],
+          ];
+
+          let failed = false;
+          for (const [pathname, expectedStatus, label] of targets) {
+            const response = await fetch(`${base}${pathname}`, {
+              headers: { Accept: 'application/json' },
+              redirect: 'manual',
+              signal: AbortSignal.timeout(15000),
+            });
+            const body = await response.text();
+            const row = {
+              label,
+              pathname,
+              status: response.status,
+              cacheStatus: response.headers.get('x-cache-status'),
+              bodyPrefix: body.slice(0, 700),
+            };
+            console.log(JSON.stringify(row));
+            if (response.status !== expectedStatus) failed = true;
+          }
+
+          if (failed) process.exit(1);
+          NODE
+
+# Temporary observation-only workflow. Never merge.
