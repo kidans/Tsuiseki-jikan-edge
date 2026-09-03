@@ -73,7 +73,7 @@ export class MangaService {
   async detail(rawId: string, requestId: string): Promise<ServiceResponse<MangaDetail>> {
     const malId = this.validateMalId(rawId);
     return withCache(this.deps, `manga:${malId}:detail`, this.config.animeTtlSeconds, MANGA_PARSER_VERSION, () => this.manga.get(malId), async () => {
-      const source = await this.source.getHtml(mangaDetailUrl(malId), ['Score:', 'Genre']);
+      const source = await this.source.getHtml(mangaDetailUrl(malId), ['Score:', 'Type:', 'Status:']);
       if (source.kind !== 'success') throw sourceError(source);
       const fetchedAt = new Date().toISOString();
       const detail = parseMangaDetail(source.value, malId, fetchedAt);
