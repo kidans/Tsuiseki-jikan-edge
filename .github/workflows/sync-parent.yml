@@ -1,4 +1,4 @@
-name: Sync upstream
+name: Sync parent upstream
 
 on:
   schedule:
@@ -9,11 +9,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: sync-upstream-main
+  group: sync-parent-main
   cancel-in-progress: false
 
 jobs:
   sync:
+    if: github.repository == 'kidans/Tsuiseki-jikan-edge'
     runs-on: ubuntu-latest
     steps:
       - name: Check out fork
@@ -21,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Merge upstream main safely
+      - name: Merge parent main safely
         shell: bash
         run: |
           set -euo pipefail
