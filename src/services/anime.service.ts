@@ -69,7 +69,7 @@ export class AnimeService {
   async detail(rawId: string, requestId: string): Promise<ServiceResponse<AnimeDetail>> {
     const malId = this.validateMalId(rawId);
     return withCache(this.deps, `anime:${malId}:detail`, this.config.animeTtlSeconds, ANIME_PARSER_VERSION, () => this.anime.get(malId), async () => {
-      const source = await this.source.getHtml(animeDetailUrl(malId), ['Score:', 'Genre']);
+      const source = await this.source.getHtml(animeDetailUrl(malId), ['Score:', 'Type:', 'Status:']);
       if (source.kind !== 'success') throw sourceError(source);
       const fetchedAt = new Date().toISOString();
       const detail = parseAnimeDetail(source.value, malId, fetchedAt);
@@ -83,7 +83,7 @@ export class AnimeService {
     const malId = this.validateMalId(rawId);
     const cacheKey = `catalog:anime:${malId}:full`;
     return withCache(this.deps, cacheKey, this.config.animeTtlSeconds, ANIME_FULL_PARSER_VERSION, () => this.catalog.get<AnimeFull>(cacheKey), async () => {
-      const source = await this.source.getHtml(animeDetailUrl(malId), ['Score:', 'Genre']);
+      const source = await this.source.getHtml(animeDetailUrl(malId), ['Score:', 'Type:', 'Status:']);
       if (source.kind !== 'success') throw sourceError(source);
       const fetchedAt = new Date().toISOString();
       const full = parseAnimeFull(source.value, malId, fetchedAt);
