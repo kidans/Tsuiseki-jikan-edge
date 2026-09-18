@@ -1,5 +1,27 @@
 name: Sync parent upstream
 
+# Keeps the public fork continuously current with the parent repository and makes
+# every non-automatic case reconcilable, instead of failing with nothing to act on.
+#
+# Outcomes, all visible in the run summary and the reconcile pull request:
+#   up-to-date : parent main is already an ancestor of this fork's main
+#   merged     : a clean merge was applied and pushed to main
+#   reconcile  : the merge conflicts, so a checkpoint branch is published and a
+#                reconciliation pull request is opened/updated for human review.
+#                The run stays GREEN - the artifact is the success condition; a
+#                permanently red schedule with no branch is not.
+#
+# WORKFLOW FILES: GitHub's Actions token can never create or update
+# `.github/workflows/**` ("refusing to allow a GitHub App to create or update
+# workflow ... without `workflows` permission"), so a push carrying upstream's CI
+# changes is rejected outright. The automated merge therefore withholds
+# `.github/workflows/**` - this fork keeps its own CI - and lists the withheld
+# paths in the summary/PR so adopting them stays a deliberate act.
+#
+# The reconcile branch is never force-overwritten once it exists: a human may be
+# mid-resolution on it. Later runs only refresh the PR body with the grown delta,
+# the conflict list and the withheld paths.
+
 on:
   schedule:
     - cron: '17 */12 * * *'
@@ -7,10 +29,15 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: sync-parent-main
   cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: LucasHenriqueDiniz/jikan-edge
+  RECONCILE_BRANCH: sync/upstream-reconcile
 
 jobs:
   sync:
@@ -23,18 +50,140 @@ jobs:
           fetch-depth: 0
 
       - name: Merge parent main safely
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/LucasHenriqueDiniz/jikan-edge.git
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
           git fetch --no-tags upstream main
+          UPSTREAM_SHA="$(git rev-parse --short upstream/main)"
 
           if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "Fork already contains upstream/main."
+            echo "up-to-date" > "$RUNNER_TEMP/outcome"
+            {
+              echo "### Sync parent upstream: up-to-date"
+              echo
+              echo "No commit from \`${UPSTREAM_REPO}\` is missing from this fork."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          git merge --no-edit upstream/main
-          git push origin HEAD:main
+          DELTA="$(git rev-list --count HEAD..upstream/main)"
+
+          if git merge --no-commit --no-ff upstream/main; then
+            MERGE_CLEAN=1
+          else
+            MERGE_CLEAN=0
+          fi
+          CONFLICTED="$(git diff --name-only --diff-filter=U | sort || true)"
+          WITHHELD="$(git diff --name-only origin/main -- .github/workflows | sort || true)"
+          if [ -n "$WITHHELD" ]; then
+            git checkout origin/main -- .github/workflows
+            git add -A
+          fi
+
+          if [ "$MERGE_CLEAN" -eq 1 ]; then
+            git commit -q -m "chore(sync): merge parent upstream ${UPSTREAM_SHA}"
+            git push origin HEAD:main
+            echo "merged" > "$RUNNER_TEMP/outcome"
+            {
+              echo "### Sync parent upstream: merged"
+              echo
+              echo "- upstream \`${UPSTREAM_SHA}\` (\`${UPSTREAM_REPO}\`)"
+              echo "- ${DELTA} commit(s) merged into \`main\` with no conflict"
+              if [ -n "$WITHHELD" ]; then
+                echo "- withheld (this fork keeps its own CI):"
+                echo
+                echo '```text'
+                echo "${WITHHELD}"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # ---- conflict path: publish a reconcilable checkpoint -------------
+          git merge --abort
+          git checkout -B "$RECONCILE_BRANCH" origin/main
+          git merge --no-commit --no-ff upstream/main || true
+          WITHHELD="$(git diff --name-only origin/main -- .github/workflows | sort || true)"
+          if [ -n "$WITHHELD" ]; then
+            git checkout origin/main -- .github/workflows
+          fi
+          git add -A
+          git commit -q -m "chore(sync): checkpoint parent upstream ${UPSTREAM_SHA} (conflicts pending) [skip ci]"
+
+          ALREADY_PUBLISHED=0
+          if git ls-remote --exit-code --heads origin "$RECONCILE_BRANCH" >/dev/null 2>&1; then
+            ALREADY_PUBLISHED=1
+            echo "Reconcile branch already published; leaving it untouched."
+          else
+            git push origin "$RECONCILE_BRANCH"
+          fi
+
+          BODY_FILE="$RUNNER_TEMP/reconcile-body.md"
+          {
+            echo "Automated parent-sync checkpoint. **Do not merge before reviewing the conflict list.**"
+            echo
+            echo "- Parent: \`${UPSTREAM_REPO}\` at \`${UPSTREAM_SHA}\`"
+            echo "- Commits behind: ${DELTA}"
+            echo "- Checkpoint branch: \`${RECONCILE_BRANCH}\`"
+            echo
+            echo "Conflicted files (resolve here, in this pull request):"
+            echo
+            echo '```text'
+            echo "${CONFLICTED}"
+            echo '```'
+            echo
+            if [ -n "$WITHHELD" ]; then
+              echo "Withheld automatically - the Actions token cannot write workflow files, so this fork keeps its own CI:"
+              echo
+              echo '```text'
+              echo "${WITHHELD}"
+              echo '```'
+              echo
+              echo "Adopt those changes deliberately if they are wanted; they are not part of this branch."
+              echo
+            fi
+            if [ "$ALREADY_PUBLISHED" -eq 1 ]; then
+              echo "This branch already existed, so it was not overwritten - in-progress resolution work is preserved."
+              echo
+            fi
+            echo "Once resolved, merging this pull request fast-forwards the fork and the next scheduled run continues normally."
+          } > "$BODY_FILE"
+
+          PR_NUMBER="$(gh pr list -R "$GITHUB_REPOSITORY" --head "$RECONCILE_BRANCH" --state open --json number -q '.[0].number' || true)"
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create -R "$GITHUB_REPOSITORY" --base main --head "$RECONCILE_BRANCH" --draft \
+              --title "Reconcile parent upstream (${UPSTREAM_REPO})" --body-file "$BODY_FILE"
+          else
+            gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body-file "$BODY_FILE"
+          fi
+
+          echo "reconcile" > "$RUNNER_TEMP/outcome"
+          {
+            echo "### Sync parent upstream: reconcile"
+            echo
+            echo "Merge conflict against \`${UPSTREAM_REPO}\` \`${UPSTREAM_SHA}\` (${DELTA} commit(s) behind)."
+            echo
+            echo "Conflicted files:"
+            echo
+            echo '```text'
+            echo "${CONFLICTED}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Parent sync conflicts in: $(echo "$CONFLICTED" | tr '\n' ' ') - reconciliation pull request updated."
+
+      - name: Report outcome
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/outcome" ]; then
+            echo "sync outcome: $(cat "$RUNNER_TEMP/outcome")"
+          else
+            echo "sync outcome: incomplete - the merge step failed before it could classify the state"
+            exit 1
+          fi
