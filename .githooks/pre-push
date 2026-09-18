@@ -1,0 +1,53 @@
+#!/bin/sh
+# pre-push — run the same gate CI runs, before the push leaves the machine.
+#
+# Why: CI runs lint, typecheck and the unit suite, and a push that fails any of them
+# turns the build red only after the round-trip. This catches it locally, in the one
+# place a rule cannot: a hook runs, a written note does not.
+#
+# It runs the full gate in CI's order — lint, then typecheck, then tests — and stops
+# at the first failure (lint is cheapest and trips most often, so it goes first).
+#
+# It BLOCKS on any failure (unlike commit-msg, which fixes and lets through): there
+# is nothing to auto-fix safely at push time, and `pnpm run lint:fix` is one command
+# away for the lint case. Bypass a known-good push with `git push --no-verify`.
+#
+# It fails OPEN when the toolchain is absent (no pnpm / no node_modules): blocking a
+# contributor who has not installed deps helps no one, and CI is still the backstop.
+#
+# Install — git does not version hooks, only the path is versioned:
+#     git config core.hooksPath .githooks
+# The repo's `prepare` script sets this on install when nothing else claims it.
+set -eu
+
+# Run from the repo root so `pnpm` finds package.json regardless of where git invoked us.
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+cd "$root" || exit 0
+
+# Fail open if the toolchain is not here — a gate you cannot run must not block the push.
+command -v pnpm >/dev/null 2>&1 || {
+  printf 'pre-push: pnpm not found, skipping lint (CI will still run it).\n' >&2
+  exit 0
+}
+[ -d node_modules ] || {
+  printf 'pre-push: node_modules missing, skipping lint (run `pnpm install`).\n' >&2
+  exit 0
+}
+
+run() {
+  label="$1"
+  shift
+  printf 'pre-push: %s...\n' "$label" >&2
+  if "$@"; then
+    return 0
+  fi
+  printf '\npre-push: %s failed — push aborted.\n' "$label" >&2
+  printf 'Fix it (lint: `pnpm run lint:fix`), or bypass with `git push --no-verify`.\n' >&2
+  exit 1
+}
+
+# CI's order: lint (cheapest, trips most often) → typecheck → unit tests.
+run lint pnpm run lint
+run typecheck pnpm run typecheck
+run tests pnpm test
+exit 0

@@ -1,9 +1,33 @@
 import { z } from 'zod';
 import type { MangaDetail } from '../domain/manga';
-import { anchorRefs, backgroundSection, canonicalUrl, capture, COVER_IMAGE, dateRangeSchema, imageSetSchema, imageVariants, labelBlock, labelValue, malRefSchema, numeric, ParserError, parseDateRange, rankedValue, richCapture, taggedImage, titleSynonyms } from './html';
+import {
+  anchorRefs,
+  backgroundSection,
+  canonicalUrl,
+  capture,
+  COVER_IMAGE,
+  dateRangeSchema,
+  imageSetSchema,
+  imageVariants,
+  labelBlock,
+  labelValue,
+  malRefSchema,
+  numeric,
+  ParserError,
+  parseDateRange,
+  rankedValue,
+  richCapture,
+  taggedImage,
+  titleSynonyms,
+} from './html';
 import { extractExternalLinks, extractRelations } from './relations-links';
 
-const relationSchema = z.object({ relation: z.string().min(1), malId: z.number().int().positive(), type: z.enum(['anime', 'manga']), title: z.string().min(1) });
+const relationSchema = z.object({
+  relation: z.string().min(1),
+  malId: z.number().int().positive(),
+  type: z.enum(['anime', 'manga']),
+  title: z.string().min(1),
+});
 const externalLinkSchema = z.object({ name: z.string().min(1), url: z.string().url() });
 
 const mangaDetailSchema = z.object({
@@ -41,10 +65,18 @@ const mangaDetailSchema = z.object({
 
 export function parseMangaDetail(html: string, malId: number, fetchedAt = new Date().toISOString()): MangaDetail {
   const head = html.slice(0, 90_000);
+<<<<<<< HEAD
   // MAL has two observed title layouts. Most pages close itemprop="name" immediately after the
   // primary title; some pages put an English display title inside the same span after a <br>.
   // Capture only the primary text in either case instead of requiring the closing span directly.
   const title = capture(head, /<span class="h1-title">\s*<span itemprop="name">([^<]+)(?:<br\s*\/?>|<\/span>)/i);
+=======
+  // The name text runs up to the first tag: for most titles that is `</span>`, but a manga with a
+  // distinct English title embeds it as `<span itemprop="name">Romaji<br><span class="title-english">
+  // English</span></span>`, so anchoring on a trailing `</span>` matched nothing and left the title
+  // empty. Stop at the first `<` instead — `capture` trims the result.
+  const title = capture(head, /<span class="h1-title">\s*<span itemprop="name">\s*([^<]+)/i);
+>>>>>>> upstream/main
   const imageUrl = taggedImage(head, COVER_IMAGE);
   const status = labelValue(head, 'Status');
   const detail: MangaDetail = {

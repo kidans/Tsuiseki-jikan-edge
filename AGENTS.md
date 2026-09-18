@@ -28,6 +28,7 @@ The milestone's production code is authorized for user profile, statistics and l
   - **Consequence: do not run `wrangler deploy` before `git push`.** It is redundant (the same change ships twice, generating two version ids) and deliberately reintroduces the risk the deploy rule below describes — a manual deploy publishes the *file tree* of that moment, while the build publishes the *commit*. On 2026-08-18 this produced 9 versions for 3 changes. **The id that matters is the one from the build the push triggered**, because it arrives last and is the one left serving.
   - **An entry can never name the version that publishes it.** Any given day's last id can only be filled in afterwards, in a following commit — the absence is structural, not a lost deploy. That was the case for `3853a33d` (2026-08-16), tracked down on 2026-08-18.
 - Anime/manga search (`GET /v1/anime?q=`, `GET /v1/manga?q=`) implemented 2026-07-26 — see `docs/routes.md` for the contract and the note about MAL's fallback behavior for queries with no match.
+  - **Exact-title search redirect fixed 2026-09-14 (issue #16), plan in `docs/plans/search-exact-match-redirect/`.** MAL 303-redirects an exact-title search to the entity detail page; the search service now routes on the post-redirect landing URL (`SourceMetadata.finalUrl`, set by `MalClient`) instead of the `<title>` marker, and maps the detail page to a one-entry `SearchEntry`. The `<title>` marker is **kept as a content check on the results branch** (do not remove it — it still guards the genre-browse page served at the search URL). A detail page the parser can't read degrades to 502, not 500. **No parser-version bump** (502s were never cached). Confirmed live via `wrangler dev --remote`: the `order_by`-only trigger is a Cloudflare-edge quirk (plain exact search returns 200 from the edge; `o=`/`w=` make it 303). **Surfaced a separate, pre-existing bug**: `parseMangaDetail` throws on some real pages (e.g. `/manga/4632`), which the direct `/v1/manga/:id` route hits too — tracked outside #16.
 - Title-derived anime/manga routes (`relations`, `external`, `streaming`, `characters`, `staff`, `statistics`, `pictures`, `news`, `forum`, and `episodes` for anime only) are implemented — see `docs/routes.md`. `episodes` fetches only MAL's first page (pagination for long series not confirmed).
 - `GET /v1/characters/:id/pictures`, `GET /v1/people/:id/pictures` and `GET /v1/people/:id/news` implemented 2026-07-26 — see `docs/routes.md`. Characters have no news/forum page on MAL; people have no forum (confirmed from the detail page's real links, not assumed).
 - `GET /v1/users?q=&page=` implemented 2026-07-26 — see `docs/routes.md`.
@@ -153,3 +154,32 @@ Known limitations in served routes: `anime/:id/episodes` covers only MAL's first
 The slice is published and the point measurements are recorded. Before widening the product, add sanitized fixtures, a corpus benchmark (p50/p95), stale/lease tests and a contract for the new route.
 
 The real production corpus was measured in two rounds on 2026-07-26 via `wrangler tail` — see `docs/results/2026-07-26-catalog-corpus-benchmark.md`. The post-parity remeasurement (49 misses covering every family, Workers Paid plan) landed at **p50 7ms / p95 27ms / max 48ms** of cpuTime; the heavy tail is explained by document size (One Piece manga characters 48ms, a prolific person's full 41ms, magazines 27ms) and sits comfortably under the paid plan's 30s ceiling. An earlier attempt to optimize `MalClient` to read only a prefix of the body was reverted (the spikes appeared just as much in the original version; the cause is external to the code and irrelevant after the plan upgrade). Known follow-up: a nonexistent club (an invalid `clubs.php?cid=`) currently becomes a 500 `UPSTREAM_SUSPICIOUS` — it should map to 404.
+
+## Commit hook
+
+`.githooks/commit-msg` strips AI attribution trailers from commit messages. Git does not version
+`.git/hooks`, so what makes the hook run is one line of local config — and a fresh clone does not
+have it. The root `prepare` script sets it on `pnpm install`, and only when nothing else claims it:
+
+```
+git config --get core.hooksPath >/dev/null 2>&1 || git config core.hooksPath .githooks
+```
+
+If you already point `core.hooksPath` somewhere else, the script leaves your value alone and this
+repo's hook stays inert — wire it by hand, or move the file into whatever directory you do use.
+
+## House style comes from the `hexagram` plugin, not from this repo
+
+**There is no `.claude/rules/` directory, and that is on purpose.** Nothing in this repo carries a
+copy of the house style. It lives in the `hexagram` plugin, installed once per machine at the
+version of whoever cloned it, and it is read from there:
+
+`architecture`, `naming`, `git`, `language`, `testing`, `clean-code`, `diagrams`, `workflow`,
+`terraform`, `setup-machine`, `research`, `postmortem`, `lint` — one skill of the plugin each. The
+same plugin also ships `board`, `pitch` and `init-project`, which are workflow tooling rather than
+rules.
+
+Two consequences to know before you go looking for a local rule file. A rule can change with no
+commit in this repo, because it is versioned where the plugin is, not here. And a machine without
+the plugin has no house style at all — the rules are not vendored, so there is nothing to fall back
+on.

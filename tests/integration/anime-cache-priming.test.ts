@@ -1,11 +1,21 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { CatalogSource } from '../../src/ports/driven/catalog-source.port';
 import { applyD1Migrations, env } from 'cloudflare:test';
+import { D1CatalogStore } from '../../src/adapters/d1-catalog-store';
 import { AnimeService } from '../../src/services/anime.service';
 import type { RuntimeConfig } from '../../src/config/env';
 import type { SourceResult } from '../../src/source/source-types';
 
 const bindings = env as unknown as { DB: D1Database; TEST_MIGRATIONS: import('cloudflare:test').D1Migration[] };
-const config: RuntimeConfig = { profileTtlSeconds: 60, listTtlSeconds: 60, animeTtlSeconds: 3_600, catalogTtlSeconds: 3_600, sourceTimeoutMs: 1_000, maxUpstreamBytes: 2_000_000, malUserAgent: 'test' };
+const config: RuntimeConfig = {
+  profileTtlSeconds: 60,
+  listTtlSeconds: 60,
+  animeTtlSeconds: 3_600,
+  catalogTtlSeconds: 3_600,
+  sourceTimeoutMs: 1_000,
+  maxUpstreamBytes: 2_000_000,
+  malUserAgent: 'test',
+};
 
 // Inlined rather than read from tests/fixtures/anime/full-valid.html: the Workers pool runs this
 // file in a bundled sandbox where readFileSync can't resolve a relative repo path (confirmed —
@@ -58,17 +68,24 @@ const html = `<!doctype html><html><head><title>Cowboy Bebop - MyAnimeList.net</
 <br /><h2>Available At</h2><div class="external_links"><a href="http://www.cowboy-bebop.net/" target="_blank" class="link ga-click" data-ga-click-type="external-links-anime-pc-official-site"><i class="link_icon fas fa-link"></i><div class="caption">Official Site</div></a></div>
 </body></html>`;
 
-function stubSource(calls: { count: number }) {
+function stubSource(calls: { count: number }): CatalogSource {
   return {
     getHtml: async (url: string): Promise<SourceResult<string>> => {
       calls.count += 1;
-      return { kind: 'success', value: html, metadata: { url, status: 200, contentType: 'text/html', durationMs: 1, sizeBytes: html.length } };
+      return {
+        kind: 'success',
+        value: html,
+        metadata: { url, status: 200, contentType: 'text/html', durationMs: 1, sizeBytes: html.length },
+      };
     },
   };
 }
 
 beforeAll(async () => applyD1Migrations(bindings.DB, bindings.TEST_MIGRATIONS));
-beforeEach(async () => { for (const table of ['anime', 'catalog_lists', 'cache_entries', 'refresh_leases']) await bindings.DB.prepare(`DELETE FROM ${table}`).run(); });
+beforeEach(async () => {
+  for (const table of ['anime', 'catalog_lists', 'cache_entries', 'refresh_leases'])
+    await bindings.DB.prepare(`DELETE FROM ${table}`).run();
+});
 
 // detail() and full() both read animeDetailUrl(malId) — the exact same MAL page. Before this fix,
 // each managed its own cache independently, so calling both close together (a realistic pattern:
@@ -76,7 +93,7 @@ beforeEach(async () => { for (const table of ['anime', 'catalog_lists', 'cache_e
 describe('AnimeService: detail() and full() share one upstream fetch on a cold cache', () => {
   it('detail() priming the cache lets a following full() call skip its own fetch', async () => {
     const calls = { count: 0 };
-    const service = new AnimeService(bindings.DB, config, stubSource(calls) as never);
+    const service = new AnimeService(new D1CatalogStore(bindings.DB), stubSource(calls), config);
 
     const detailResult = await service.detail('1', 'req-1');
     expect(calls.count).toBe(1);
@@ -90,7 +107,7 @@ describe('AnimeService: detail() and full() share one upstream fetch on a cold c
 
   it('full() priming the cache lets a following detail() call skip its own fetch, without leaking themeSongs', async () => {
     const calls = { count: 0 };
-    const service = new AnimeService(bindings.DB, config, stubSource(calls) as never);
+    const service = new AnimeService(new D1CatalogStore(bindings.DB), stubSource(calls), config);
 
     const fullResult = await service.full('1', 'req-1');
     expect(calls.count).toBe(1);
